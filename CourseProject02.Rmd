@@ -1,0 +1,128 @@
+---
+title: "CourseProject02"
+author: "KKher"
+date: "6/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Natural Events Effects on Health and Economics
+
+## Synopsis
+We examine here the effect of natural events on health and economy in USA.
+We read data, get an overview of data structure, identify columns in which our data resides, subset entire dataset to get only the columns that will help us answer our Qs, perform a simple group_by followed by sum process to get total effect of those natural events on Health & Economy.
+
+## Data
+The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size. You can download the file from the course web site:
+- [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) [47Mb]
+
+There is also some documentation of the database available. Here you will find how some of the variables are constructed/defined.
+
+- [National Weather Service Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+- [National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
+
+## Data Processing
+We start by loading data to our workspace and looking at its structure
+
+```{r data}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+data <- read.csv("./repdata_data_StormData.csv.bz2")
+str(data)
+head(data)
+```
+
+Data dimension is '''r dim(data)'''.
+
+As per documentation, the columns to help answer this assignment are; EVTYPE, FATALITIES, INJURIES,PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP.
+
+Hence we subset those columns only.
+
+from str command we notice many fields filled with special characters and not actual data, hence we work on cleaning that up, moreover, characters by their numerical values (K = 1,000 // M = 1,000,000 // B = 1,000,000,000 // any other character = 1)
+
+```{r data1}
+filtered_data <- data[, c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+
+# lose non-characters and lower case characters in CROPDMGEXP column
+filtered_data$CROPDMGEXP <- tolower(filtered_data$CROPDMGEXP)
+
+# replace m by million, b by billion & k by thousand in CROPDMGEXP column
+filtered_data$CROPDMGEXP <- ifelse(filtered_data$CROPDMGEXP == "k", 1000,
+                                 ifelse(filtered_data$CROPDMGEXP == "m", 1000000,
+                                        ifelse(filtered_data$CROPDMGEXP == "b",
+                                               1000000000, 1)))
+
+# lose non-characters and lower case characters in CROPDMGEXP column
+filtered_data$PROPDMGEXP <- tolower(filtered_data$PROPDMGEXP)
+
+# replace m by million, b by billion & k by thousand in PROPDMGEXP column
+filtered_data$PROPDMGEXP <- ifelse(filtered_data$PROPDMGEXP == "k", 1000,
+                                 ifelse(filtered_data$PROPDMGEXP == "m", 1000000,
+                                        ifelse(filtered_data$PROPDMGEXP == "b",
+                                               1000000000, 1)))
+# lower case EVTYPE just in case
+filtered_data$EVTYPE <- tolower(filtered_data$EVTYPE)
+```
+
+## Results
+
+After our is filtered, now we answer:
+1. Across the United States, which types of events (as indicated in the \color{red}{\verb|EVTYPE|}EVTYPE variable) are most harmful with respect to population health?
+
+We begin by grouping data by event type, calculate sum of FATALITIES, INJURIES and plot **Top 10** events causing casualities
+
+```{r 1st_Q}
+# first we subset casualities data, group by Event type then sum of FATALITIES, INJURIES and finally sort casualities descendingly
+casualities <- filtered_data[, c("EVTYPE", "FATALITIES", "INJURIES")] %>%
+                      group_by(EVTYPE) %>% 
+                      summarize(FATALITIES = sum(FATALITIES, na.rm = TRUE), 
+                                INJURIES = sum(INJURIES, na.rm = TRUE)) %>%
+                      arrange(desc(FATALITIES), desc(INJURIES))
+
+# we now pick top 10 and plot them
+top10_c <- casualities[1:10, ]
+
+# Reshape top10 for plotting
+top10_c <- top10_c %>% gather(Casuality, Total, FATALITIES,INJURIES)
+
+# plot top 10 event effects on health per casuality type
+plot1 <- ggplot(top10_c, aes(EVTYPE,Total, fill = Casuality)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Event Type", y = "Sum of Casualities", title = "Top 10 events by type of effect on Health")
+
+print(plot1)
+```
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+We follow same procedure as in Q1, calculate sum of PROPDMGxPROPDMGEXP, CROPDMGxCROPDMGEXP and plot **Top 10** events causing economic losses
+
+```{r 2nd_Q}
+
+economic_loss <- filtered_data[, c("EVTYPE", "INJURIES", "PROPDMG", "PROPDMGEXP",
+                                 "CROPDMG", "CROPDMGEXP")] %>%
+                      group_by(EVTYPE) %>% 
+                      summarize(Prop_DMG = sum(PROPDMG*PROPDMGEXP, na.rm = TRUE), 
+                                Crob_DMG = sum(CROPDMG*CROPDMGEXP, na.rm = TRUE))%>%
+                      arrange(desc(Prop_DMG), desc(Crob_DMG))
+
+# we now pick top 10 and plot them
+top10_l <- economic_loss[1:10, ]
+
+# Reshape top10 for plotting
+top10_l <- top10_l %>% gather(Loss_Type, Total, Prop_DMG,Crob_DMG)
+
+# plot top 10 event effects on health per casuality type
+plot2 <- ggplot(top10_l, aes(EVTYPE,Total, fill = Loss_Type)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Event Type", y = "Sum of Losses", title = "Top 10 events by type of effect on Economy")
+
+print(plot2)
+```
